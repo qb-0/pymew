@@ -68,11 +68,19 @@ jobs:
           else
             PY="$RUNNER_TEMP/venv/Scripts/python.exe"
           fi
-          for attempt in 1 2 3 4 5 6; do
-            "$PY" -m pip install -q --index-url "$INDEX_URL" "pymew==$version" && break
-            echo "install attempt $attempt failed, retrying"
-            sleep 10
+          installed=""
+          for attempt in $(seq 1 20); do
+            if "$PY" -m pip install -q --no-cache-dir --index-url "$INDEX_URL" "pymew==$version"; then
+              installed=1
+              break
+            fi
+            echo "install attempt $attempt failed, retrying in 15s"
+            sleep 15
           done
+          if [ -z "$installed" ]; then
+            echo "::error::pymew==$version is not installable from $INDEX_URL after 20 attempts"
+            exit 1
+          fi
           EXPECTED_VERSION="$version" "$PY" - <<'PY'
           import ast
           import importlib.metadata as metadata
@@ -141,11 +149,19 @@ jobs:
           else
             PY="$RUNNER_TEMP/venv/Scripts/python.exe"
           fi
-          for attempt in 1 2 3 4 5 6; do
-            "$PY" -m pip install -q --index-url "$INDEX_URL" "pymew==$version" && break
-            echo "install attempt $attempt failed, retrying"
-            sleep 10
+          installed=""
+          for attempt in $(seq 1 20); do
+            if "$PY" -m pip install -q --no-cache-dir --index-url "$INDEX_URL" "pymew==$version"; then
+              installed=1
+              break
+            fi
+            echo "install attempt $attempt failed, retrying in 15s"
+            sleep 15
           done
+          if [ -z "$installed" ]; then
+            echo "::error::pymew==$version is not installable from $INDEX_URL after 20 attempts"
+            exit 1
+          fi
           EXPECTED_VERSION="$version" "$PY" - <<'PY'
           import ast
           import importlib.metadata as metadata
