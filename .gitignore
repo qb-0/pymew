@@ -1,0 +1,14 @@
+planning/
+tests/
+examples/*
+!examples/*.py
+
+nimcache/
+__pycache__/
+*.pyc
+dist/
+
+*.so
+*.pyd
+*.dll
+tools/

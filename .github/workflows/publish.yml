@@ -1,0 +1,170 @@
+name: Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Package index
+        type: choice
+        options: [testpypi, pypi]
+        default: testpypi
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+
+  testpypi:
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi'
+    runs-on: ubuntu-latest
+    environment: testpypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: wheels
+          path: dist
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          packages-dir: dist
+
+  verify:
+    needs: testpypi
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install and inspect the published package
+        shell: bash
+        env:
+          INDEX_URL: https://test.pypi.org/simple/
+        run: |
+          version=$(sed -n 's/^version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' pymew.nimble)
+          echo "expected version $version"
+          python -m venv "$RUNNER_TEMP/venv"
+          if [ -x "$RUNNER_TEMP/venv/bin/python" ]; then
+            PY="$RUNNER_TEMP/venv/bin/python"
+          else
+            PY="$RUNNER_TEMP/venv/Scripts/python.exe"
+          fi
+          for attempt in 1 2 3 4 5 6; do
+            "$PY" -m pip install -q --index-url "$INDEX_URL" "pymew==$version" && break
+            echo "install attempt $attempt failed, retrying"
+            sleep 10
+          done
+          EXPECTED_VERSION="$version" "$PY" - <<'PY'
+          import ast
+          import importlib.metadata as metadata
+          import os
+          import pathlib
+
+          import pymew
+
+          site = pathlib.Path(pymew.__file__).parent
+          stub = site / "pymew.pyi"
+          expected = os.environ["EXPECTED_VERSION"]
+          installed = metadata.version("pymew")
+          print("installed", installed)
+          print("files", sorted(p.name for p in site.iterdir() if p.name.startswith("pymew")))
+          print("binary", pymew.__file__)
+          assert installed == expected, f"version {installed} != {expected}"
+          assert stub.is_file(), "pymew.pyi is missing from the wheel"
+          ast.parse(stub.read_text(encoding="utf-8"))
+          print("stub", stub.stat().st_size, "bytes, parse ok")
+          print("processes", len(pymew.mem.processes()))
+          print("verify ok")
+          PY
+
+  pypi:
+    needs: build
+    if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.target == 'pypi')
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: wheels
+          path: dist
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+
+  verify-pypi:
+    needs: pypi
+    if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.target == 'pypi')
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install and inspect the published package
+        shell: bash
+        env:
+          INDEX_URL: https://pypi.org/simple/
+        run: |
+          version=$(sed -n 's/^version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' pymew.nimble)
+          echo "expected version $version"
+          python -m venv "$RUNNER_TEMP/venv"
+          if [ -x "$RUNNER_TEMP/venv/bin/python" ]; then
+            PY="$RUNNER_TEMP/venv/bin/python"
+          else
+            PY="$RUNNER_TEMP/venv/Scripts/python.exe"
+          fi
+          for attempt in 1 2 3 4 5 6; do
+            "$PY" -m pip install -q --index-url "$INDEX_URL" "pymew==$version" && break
+            echo "install attempt $attempt failed, retrying"
+            sleep 10
+          done
+          EXPECTED_VERSION="$version" "$PY" - <<'PY'
+          import ast
+          import importlib.metadata as metadata
+          import os
+          import pathlib
+
+          import pymew
+
+          site = pathlib.Path(pymew.__file__).parent
+          stub = site / "pymew.pyi"
+          expected = os.environ["EXPECTED_VERSION"]
+          installed = metadata.version("pymew")
+          print("installed", installed)
+          print("files", sorted(p.name for p in site.iterdir() if p.name.startswith("pymew")))
+          print("binary", pymew.__file__)
+          assert installed == expected, f"version {installed} != {expected}"
+          assert stub.is_file(), "pymew.pyi is missing from the wheel"
+          ast.parse(stub.read_text(encoding="utf-8"))
+          print("stub", stub.stat().st_size, "bytes, parse ok")
+          print("processes", len(pymew.mem.processes()))
+          print("verify ok")
+          PY

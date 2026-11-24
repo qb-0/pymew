@@ -1,0 +1,234 @@
+name: Build wheels
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install Nim
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://nim-lang.org/download/nim-2.4.0_x64.zip -OutFile nim.zip
+          Expand-Archive nim.zip -DestinationPath C:\nim
+          $nim = Get-ChildItem C:\nim -Directory | Select-Object -First 1
+          Add-Content $env:GITHUB_PATH "$($nim.FullName)\bin"
+
+      - name: Install MinGW
+        run: choco install mingw -y --no-progress
+
+      - name: Install dependencies
+        run: nimble install --depsOnly -y
+
+      - name: Build
+        run: nimble build -y
+
+      - name: Smoke test
+        run: python -c "import pymew as pm; print(len(pm.mem.processes()))"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: binary-windows
+          path: pymew.pyd
+          if-no-files-found: error
+          retention-days: 7
+
+  linux:
+    runs-on: ubuntu-latest
+    container:
+      image: quay.io/pypa/manylinux_2_28_x86_64:latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install toolchain
+        run: |
+          dnf install -y \
+            curl xz git \
+            gcc-toolset-16-gcc gcc-toolset-16-binutils \
+            libX11-devel libXrandr-devel libXi-devel libXcursor-devel \
+            libXinerama-devel libXtst-devel mesa-libGL-devel alsa-lib-devel
+          curl -fsSL https://nim-lang.org/download/nim-2.4.0-linux_x64.tar.xz -o /tmp/nim.tar.xz
+          tar -xJf /tmp/nim.tar.xz -C /opt
+          echo "/opt/nim-2.4.0/bin" >> "$GITHUB_PATH"
+
+      - name: Build
+        run: |
+          source /opt/rh/gcc-toolset-16/enable
+          nimble install --depsOnly -y
+          nimble build -y
+
+      - name: Check glibc requirement
+        run: |
+          max=$(readelf --version-info pymew.so | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -Vu | tail -1)
+          echo "requires glibc $max"
+          if [ "$max" != "2.28" ] && [ "$(printf '%s\n2.28\n' "$max" | sort -V | tail -1)" = "$max" ]; then
+            echo "pymew.so requires glibc $max, manylinux_2_28 is invalid"
+            exit 1
+          fi
+
+      - name: Smoke test
+        run: |
+          cp pymew.so pymew.pyi /tmp/
+          cd /tmp
+          /opt/python/cp39-cp39/bin/python -c "import pymew as pm; print(len(pm.mem.processes()))"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: binary-linux
+          path: pymew.so
+          if-no-files-found: error
+          retention-days: 7
+
+  pack:
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: binary-windows
+          path: bin/windows
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: binary-linux
+          path: bin/linux
+
+      - name: Pack wheels
+        run: |
+          python - <<'PY'
+          import base64
+          import hashlib
+          import re
+          import zipfile
+          from pathlib import Path
+
+          root = Path(".")
+          version = re.search(r'^version\s*=\s*"([^"]+)"', (root / "pymew.nimble").read_text(encoding="utf-8"), re.MULTILINE).group(1)
+          repo = "https://github.com/qb-0/pymew"
+          readme = (root / "README.md").read_text(encoding="utf-8")
+          readme = readme.replace('src="assets/logo.png"', f'src="{repo}/raw/main/assets/logo.png"')
+          readme = readme.replace('href="CHEATSHEET.md"', f'href="{repo}/blob/main/CHEATSHEET.md"')
+          readme = readme.replace("(CHEATSHEET.md)", f"({repo}/blob/main/CHEATSHEET.md)")
+          readme = readme.rstrip() + "\n"
+
+          metadata = "\n".join(
+              [
+                  "Metadata-Version: 2.4",
+                  "Name: pymew",
+                  f"Version: {version}",
+                  "Summary: External game memory, scanning and overlays for Python",
+                  "Author: qb-0",
+                  "License-Expression: MIT",
+                  "Requires-Python: >=3.7,<3.15",
+                  f"Project-URL: Homepage, {repo}",
+                  f"Project-URL: Repository, {repo}",
+                  f"Project-URL: Cheatsheet, {repo}/blob/main/CHEATSHEET.md",
+                  "Project-URL: Discord, https://discord.gg/B34S4aMYqY",
+                  "Keywords: game,cheat,memory,overlay,esp,reverse-engineering",
+                  "Classifier: Development Status :: 4 - Beta",
+                  "Classifier: Intended Audience :: Developers",
+                  "Classifier: License :: OSI Approved :: MIT License",
+                  "Classifier: Operating System :: Microsoft :: Windows",
+                  "Classifier: Operating System :: POSIX :: Linux",
+                  "Classifier: Programming Language :: Python :: 3",
+                  "Classifier: Programming Language :: Python :: 3 :: Only",
+                  "Classifier: Topic :: Games/Entertainment",
+                  "Classifier: Topic :: Software Development :: Libraries :: Python Modules",
+                  "Description-Content-Type: text/markdown",
+                  "",
+                  readme,
+              ]
+          )
+
+          stub = (root / "pymew.pyi").read_bytes()
+          out = root / "dist"
+          out.mkdir(exist_ok=True)
+
+
+          def pack(platform_name, binary_path):
+              data = binary_path.read_bytes()
+              magic = b"MZ" if platform_name.startswith("win") else b"\x7fELF"
+              if not data.startswith(magic):
+                  raise SystemExit(f"{binary_path} is not a {magic!r} binary")
+              info = f"pymew-{version}.dist-info"
+              wheel = "\n".join(
+                  [
+                      "Wheel-Version: 1.0",
+                      "Generator: pymew-build",
+                      "Root-Is-Purelib: false",
+                      f"Tag: py3-none-{platform_name}",
+                      "",
+                  ]
+              )
+              entries = [
+                  (binary_path.name, data),
+                  ("pymew.pyi", stub),
+                  (f"{info}/METADATA", metadata.encode()),
+                  (f"{info}/WHEEL", wheel.encode()),
+              ]
+              record = []
+              target = out / f"pymew-{version}-py3-none-{platform_name}.whl"
+              with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as archive:
+                  for name, payload in entries:
+                      archive.writestr(name, payload)
+                      digest = base64.urlsafe_b64encode(hashlib.sha256(payload).digest()).rstrip(b"=").decode()
+                      record.append(f"{name},sha256={digest},{len(payload)}")
+                  record.append(f"{info}/RECORD,,")
+                  archive.writestr(f"{info}/RECORD", "\n".join(record) + "\n")
+
+
+          pack("win_amd64", root / "bin/windows/pymew.pyd")
+          pack("manylinux_2_28_x86_64", root / "bin/linux/pymew.so")
+          PY
+
+      - name: Check wheels
+        run: |
+          python -m pip install twine
+          python -m twine check dist/*.whl
+
+      - name: Smoke test Linux wheel
+        run: |
+          python -m venv /tmp/venv
+          /tmp/venv/bin/python -m pip install dist/*manylinux*.whl
+          /tmp/venv/bin/python -VV
+          /tmp/venv/bin/python -c "import pymew, pathlib; print(pathlib.Path(pymew.__file__))"
+          /tmp/venv/bin/python -c "import subprocess, pymew, pathlib; subprocess.run(['ldd', pymew.__file__])"
+          cd /tmp
+          if ! /tmp/venv/bin/python -X faulthandler -c "import pymew; print('import ok')"; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq gdb
+            gdb -batch -ex run -ex "thread apply all bt" --args /tmp/venv/bin/python -X faulthandler -c "import pymew"
+            exit 1
+          fi
+          /tmp/venv/bin/python -X faulthandler -c "import pymew as pm; print(len(pm.mem.processes()))"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: wheels
+          path: dist/*.whl
+          if-no-files-found: error
+          retention-days: 7
