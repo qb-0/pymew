@@ -300,7 +300,15 @@ d.fonts()                                                                       
 
 d.set_font(font=None)                                                           # -> None
 d.font()                                                                        # -> Font | None
-font.text(text, x, y, size=20.0, color=0xFFFFFFFF, align="left")                # -> None
+font.text(
+    text, x, y, size=20.0,
+    color=0xFFFFFFFF,
+    align="left",
+    spacing=1.0,
+    outline=False,
+    outline_color=None,
+    outline_thick=1.0
+)  # -> None
 font.measure(text, size=20.0, spacing=1.0)                                      # -> vec2
 # filter: point | bilinear | trilinear
 font.filter(filter="bilinear")                                                  # -> None

@@ -1,4 +1,4 @@
-version       = "0.1.0"
+version       = "0.1.1"
 author        = "pymew"
 description   = "A cross-platform Python memory manipulation and overlay library designed to simplify the development of external game cheats"
 license       = "MIT"

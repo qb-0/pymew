@@ -381,16 +381,6 @@ proc drawTextBlock(
     )
     lineY += lineHeight
 
-proc drawTextAt(
-  p: ptr rl.Font,
-  text: string,
-  x, y: float32,
-  size, spacing: float32,
-  color: int,
-  align: TextAlign
-) =
-  drawTextBlock(p, text, x, y, size, spacing, color, 0, 0.0, false, align)
-
 proc drawOutlinedText(
   p: ptr rl.Font,
   text: string,
@@ -1078,10 +1068,26 @@ proc fontTextImpl(self, args, kwargs: PPyObject): PPyObject {.cdecl.} =
       text = methodText(args, kwargs, 1, "text", "")
       x = methodFloat(args, kwargs, 2, "x", 0.0).float32
       y = methodFloat(args, kwargs, 3, "y", 0.0).float32
-      size = methodFloat(args, kwargs, 4, "size", 20.0).float32
+      size = max(methodFloat(args, kwargs, 4, "size", 20.0), 1.0).float32
       color = methodColor(args, kwargs, 5, "color", DefaultColor)
       align = parseAlign(methodStr(args, kwargs, 6, "align", "left"))
-    drawTextAt(data, text, x, y, size, 1.0, color, align)
+      spacing = max(methodFloat(args, kwargs, 7, "spacing", 1.0), 0.0).float32
+      outlineColor = resolveOutline(methodOptional(args, kwargs, 9, "outline_color"), color)
+      border = max(methodFloat(args, kwargs, 10, "outline_thick", 1.0), 0.0).float32
+      outlineOn = outlineActive(methodBool(args, kwargs, 8, "outline", false), border, outlineColor)
+    drawOutlinedText(
+      data,
+      text,
+      x,
+      y,
+      size,
+      spacing,
+      color,
+      outlineColor,
+      border,
+      outlineOn,
+      align
+    )
     newPyNone()
 
 proc fontMeasureImpl(self, args, kwargs: PPyObject): PPyObject {.cdecl.} =

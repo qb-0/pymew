@@ -616,6 +616,10 @@ class _Font:
         size: float = 20.0,
         color: int = 0xFFFFFFFF,
         align: str = "left",
+        spacing: float = 1.0,
+        outline: bool = False,
+        outline_color: int | None = None,
+        outline_thick: float = 1.0,
     ) -> None: ...
     def measure(self, text: str | list[str], size: float = 20.0, spacing: float = 1.0) -> vec2: ...
     def filter(self, filter: str = "bilinear") -> None: ...
