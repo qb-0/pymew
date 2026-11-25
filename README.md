@@ -56,6 +56,8 @@ nim c pymew
 
 <div align="center"><a href="https://github.com/qb-0/pymew-DS3-ESP"><strong>pymew-DS3-ESP</strong></a><br><sub>Nov 24, 2026 · <a href="https://github.com/qb-0">qb-0</a></sub><br><a href="https://github.com/qb-0/pymew-DS3-ESP"><img src="https://raw.githubusercontent.com/qb-0/pymew-DS3-ESP/master/assets/ds3.png" width="340" alt="Darksiders III ESP"></a><br>A configurable, cross-platform Darksiders III ESP.</div><br>
 
+<div align="center"><a href="https://github.com/qb-0/pymew/blob/main/examples/fivem_esp.py"><strong>FiveM ESP</strong></a><br><sub>Nov 25, 2026 · <a href="https://github.com/g4b6">g4b6</a></sub><br><a href="https://github.com/qb-0/pymew/blob/main/examples/fivem_esp.py"><img src="https://github.com/user-attachments/assets/84d31675-765a-4581-8ba9-d7da86bbe065" width="340" alt="FiveM ESP"></a><br>A simple ESP for FiveM.</div><br>
+
 <!--
 Copy this block to add a project:
 
