@@ -145,7 +145,7 @@ with process, pm.overlay.open(fps=144, title="pymew") as overlay:
                     label = f"{ent.name()} ({ent.pos().distance(local_pos):.0f}m)"
                     percent = (min(max(ent.health(), 100.0), 200.0) - 100.0) / 100.0
                     
-                    box = pm.draw.entity_box(left_edge, top, box_width, box_height, 0x00000000, outline=False)
+                    box = pm.draw.entity_box(left_edge, top, box_width, box_height, 0)
                     box.add_bar("left", lime, value=percent, thick=2.0, gap=3.0, outline=True)
                     box.add_text("bottom", label, white, size=16.0, gap=3.0, outline=True, outline_color=black)
                     box.draw()
