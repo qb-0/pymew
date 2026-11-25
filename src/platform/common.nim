@@ -30,6 +30,7 @@ type
     width*: int
     height*: int
     visible*: bool
+    focused*: bool
 
   RawMonitor* = object
     name*: string

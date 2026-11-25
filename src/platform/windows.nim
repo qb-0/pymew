@@ -257,8 +257,22 @@ proc windowGeometry*(id: int): RawWindow =
     y: int(origin.y),
     width: int(rect.right - rect.left),
     height: int(rect.bottom - rect.top),
-    visible: IsWindowVisible(hwnd) != 0
+    visible: IsWindowVisible(hwnd) != 0,
+    focused: GetForegroundWindow() == hwnd and IsIconic(hwnd) == 0
   )
+
+proc setTaskbarVisible*(id: int, visible: bool) =
+  let hwnd = cast[HWND](id)
+  if IsWindow(hwnd) == 0:
+    raise newException(OsFailure, "window " & $id & " no longer exists")
+  let style = GetWindowLongW(hwnd, GWL_EXSTYLE)
+  let updated =
+    if visible:
+      (style or LONG(WS_EX_APPWINDOW)) and not LONG(WS_EX_TOOLWINDOW)
+    else:
+      (style or LONG(WS_EX_TOOLWINDOW)) and not LONG(WS_EX_APPWINDOW)
+  if updated != style:
+    discard SetWindowLongW(hwnd, GWL_EXSTYLE, updated)
 
 proc screenSize*(): tuple[width, height: int] =
   (

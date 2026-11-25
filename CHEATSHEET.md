@@ -132,11 +132,12 @@ ov = pm.overlay.open(
     fps=0,
     title="pymew",
     exit_key=None,
-    track=False,
+    track=True,
     log_level=None,
     imgui_bundle=False,
     imgui_key=None,
-    msaa=True
+    msaa=True,
+    taskbar=False
 )  # -> Overlay
 
 while ov.loop():                                                    # -> bool
@@ -163,6 +164,7 @@ ov.close()                                                          # -> None
 # loop() stays True until the exit key or window close
 # interact() enters the input mode that imgui_key also toggles
 # begin()/end() is only required for manual frame handling
+# track=True follows the target geometry and hides the overlay while the target is not focused
 ```
 
 ## Draw

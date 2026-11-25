@@ -1,4 +1,4 @@
-import std/[monotimes, times]
+import std/[monotimes, os, times]
 import nimpy
 import nimpy/py_types
 import raylib
@@ -16,6 +16,7 @@ type
     exitKey*: int
     exitDown*: bool
     trackTarget*: bool
+    fps*: int
     targetPid*: int
     targetId*: int
     lastResolve*: MonoTime
@@ -25,6 +26,8 @@ type
     lastH*: int
     clickthroughOn*: bool
     topmostOn*: bool
+    taskbarOn*: bool
+    hidden*: bool
     imgui*: ImGuiBridge
     imguiKey*: int
     interactOn*: bool
@@ -57,8 +60,17 @@ proc nativeHandle(): int =
   else:
     if handle.isNil: 0 else: int(cast[ptr culong](handle)[])
 
+proc applyTaskbar(visible: bool) =
+  let handle = nativeHandle()
+  if handle == 0:
+    return
+  try:
+    setTaskbarVisible(handle, visible)
+  except OsFailure as e:
+    raise newException(PmOverlayError, "cannot change taskbar visibility: " & e.msg)
+
 proc enterInteract(self: Overlay) =
-  if self.interactOn:
+  if self.interactOn or self.hidden:
     return
   self.interactOn = true
   self.interactSince = getMonoTime()
@@ -81,8 +93,24 @@ proc leaveInteract(self: Overlay) =
   releaseCursorClip()
   if isWindowReady():
     self.applyWindowFlag(true, WindowMousePassthrough, self.clickthroughOn)
-  if self.targetId > 0:
+  if self.targetId > 0 and not self.hidden and isWindowFocused():
     focusWindow(self.targetId)
+
+proc applyFocus(self: Overlay, focused: bool) =
+  let visible = focused or self.interactOn
+  if visible == not self.hidden:
+    return
+  self.hidden = not visible
+  if visible:
+    clearWindowState(flags(WindowHidden))
+    if self.topmostOn:
+      clearWindowState(flags(WindowTopmost))
+      setWindowState(flags(WindowTopmost))
+    if not self.taskbarOn:
+      applyTaskbar(false)
+    return
+  self.leaveInteract()
+  setWindowState(flags(WindowHidden))
 
 proc updateInteract(self: Overlay) =
   if self.imgui.isNil or self.imguiKey < 0:
@@ -147,6 +175,11 @@ proc applyGeometry(self: Overlay, geometry: RawWindow) =
     self.lastX = geometry.x
     self.lastY = geometry.y
 
+proc applyTarget(self: Overlay, window: RawWindow) =
+  self.applyFocus(window.focused)
+  if not self.hidden:
+    self.applyGeometry(window)
+
 proc exitPressed(self: Overlay): bool =
   let down = keyDown(self.exitKey)
   result = down and not self.exitDown
@@ -156,8 +189,7 @@ proc track(self: Overlay) =
   if not self.trackTarget or self.targetPid <= 0:
     return
   try:
-    let geometry = windowGeometry(self.targetId)
-    self.applyGeometry(geometry)
+    self.applyTarget(windowGeometry(self.targetId))
     return
   except OsFailure:
     discard
@@ -168,7 +200,7 @@ proc track(self: Overlay) =
   try:
     let window = findWindow(self.targetPid)
     self.targetId = window.id
-    self.applyGeometry(window)
+    self.applyTarget(window)
   except OsFailure:
     discard
 
@@ -177,11 +209,12 @@ proc overlayOpen*(
   fps: int = 0,
   title: string = "pymew",
   exit_key: PyObject = nil,
-  track: bool = false,
+  track: bool = true,
   log_level: PyObject = nil,
   imgui_bundle: bool = false,
   imgui_key: PyObject = nil,
-  msaa: bool = true
+  msaa: bool = true,
+  taskbar: bool = false
 ): PPyObject {.exportpy: "_overlayOpen".} =
   pyWrap:
     if fps < 0:
@@ -207,7 +240,7 @@ proc overlayOpen*(
       targetPid = resolveTargetPid(target)
       fullscreen = false
       try:
-        targetWindow = findWindow(targetPid)
+        targetWindow = windowGeometry(findWindow(targetPid).id)
       except OsFailure as e:
         raise newException(
           PmWindowNotFound,
@@ -216,6 +249,7 @@ proc overlayOpen*(
 
     setTraceLogLevel(logLevel)
     setTargetFPS(fps.int32)
+    let tracking = track and not fullscreen
     var config = @[
       WindowUndecorated,
       WindowTransparent,
@@ -235,18 +269,25 @@ proc overlayOpen*(
       raise newException(PmOverlayError, "cannot create overlay window: " & e.msg)
 
     resetDrawState()
+    when defined(linux):
+      setFocusable(nativeHandle(), false)
+    setWindowState(flags(WindowUnfocused))
     var self = Overlay(
       opened: true,
       exitKey: exitKey,
-      trackTarget: track and not fullscreen,
+      trackTarget: tracking,
+      fps: fps,
       targetPid: targetPid,
       targetId: targetWindow.id,
       lastResolve: getMonoTime(),
       clickthroughOn: true,
       topmostOn: true,
+      taskbarOn: taskbar,
+      hidden: tracking and not targetWindow.focused,
       imguiKey: interactKey
     )
     try:
+      applyTaskbar(taskbar)
       if imgui_bundle:
         self.imgui = openImGuiBundle()
       if fullscreen:
@@ -272,7 +313,8 @@ proc overlayOpen*(
         self.lastW = targetWindow.width
         self.lastH = targetWindow.height
       setExitKey(KeyboardKey.Null)
-      clearWindowState(flags(WindowHidden))
+      if not self.hidden:
+        clearWindowState(flags(WindowHidden))
     except CatchableError:
       self.closeImpl()
       raise
@@ -291,6 +333,8 @@ proc overlayLoop*(self: Overlay): PPyObject {.exportpy: "loop".} =
       else:
         self.track()
         self.beginFrame()
+        if self.hidden and self.fps <= 0:
+          sleep(16)
         true
 
 proc overlayBegin*(self: Overlay): PPyObject {.exportpy: "begin".} =
@@ -385,6 +429,7 @@ proc overlaySetFps*(self: Overlay, fps: int): PPyObject {.exportpy: "set_fps".} 
     if fps < 0:
       raise newException(PmValueError, "fps must not be negative")
     setTargetFPS(fps.int32)
+    self.fps = fps
 
 proc overlayScreenshot*(self: Overlay, path: string): PPyObject {.exportpy: "screenshot".} =
   pyWrap:

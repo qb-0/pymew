@@ -1,6 +1,6 @@
 import std/[os, strutils, tables, algorithm]
 import std/posix
-import x11/[x, xlib, xatom, xrandr]
+import x11/[x, xlib, xatom, xrandr, xutil]
 
 import common
 from ./x11_input import openDisplay, rootWindow
@@ -291,6 +291,10 @@ proc x11ErrorHandler(d: PDisplay, event: PXErrorEvent): cint {.cdecl.} =
   discard event
   0
 
+var
+  netWmStateAtom: Atom
+  netWmStateFocusedAtom: Atom
+
 proc prepareWindowQueries() =
   discard XSetErrorHandler(x11ErrorHandler)
 
@@ -336,6 +340,38 @@ proc readProperty(
   result.data = newSeq[byte](total)
   if total > 0:
     copyMem(addr result.data[0], raw, total)
+
+proc isFocused(d: PDisplay, win: Window): bool =
+  if netWmStateAtom == 0:
+    netWmStateAtom = internAtom(d, "_NET_WM_STATE")
+    netWmStateFocusedAtom = internAtom(d, "_NET_WM_STATE_FOCUSED")
+  var
+    actualType: Atom
+    actualFormat: cint
+    nitems, bytesAfter: culong
+    raw: ptr uint8 = nil
+  if XGetWindowProperty(
+    d,
+    win,
+    netWmStateAtom,
+    0,
+    64,
+    0,
+    XA_ATOM,
+    addr actualType,
+    addr actualFormat,
+    addr nitems,
+    addr bytesAfter,
+    cast[PPcuchar](addr raw)
+  ) != Success:
+    return false
+  if raw.isNil:
+    return false
+  defer: discard XFree(cast[pointer](raw))
+  let atoms = cast[ptr UncheckedArray[clong]](raw)
+  for i in 0 ..< int(nitems):
+    if cast[Atom](atoms[i]) == netWmStateFocusedAtom:
+      return true
 
 proc propertyWindows(d: PDisplay, win: Window, name: string): seq[Window] =
   let prop = readProperty(d, win, name, XA_WINDOW)
@@ -488,8 +524,65 @@ proc windowGeometry*(id: int): RawWindow =
     y: rootY.int,
     width: attributes.width.int,
     height: attributes.height.int,
-    visible: attributes.map_state == IsViewable
+    visible: attributes.map_state == IsViewable,
+    focused: isFocused(d, Window(id))
   )
+
+proc setFocusable*(id: int, focusable: bool) =
+  if id == 0:
+    return
+  let d = openDisplay()
+  var hints = XWMHints(
+    flags: InputHint,
+    input: XBool(if focusable: 1 else: 0)
+  )
+  discard XSetWMHints(d, Window(id), addr hints)
+  discard XFlush(d)
+
+proc setTaskbarVisible*(id: int, visible: bool) =
+  if id == 0:
+    return
+  let
+    d = openDisplay()
+    win = Window(id)
+    stateAtom = internAtom(d, "_NET_WM_STATE")
+    skipTaskbar = internAtom(d, "_NET_WM_STATE_SKIP_TASKBAR")
+    skipPager = internAtom(d, "_NET_WM_STATE_SKIP_PAGER")
+  var attributes: XWindowAttributes
+  if XGetWindowAttributes(d, win, addr attributes) == 0:
+    raise newException(OsFailure, "window " & $id & " no longer exists")
+  if attributes.map_state == IsViewable:
+    var event: XEvent
+    event.xclient.theType = ClientMessage
+    event.xclient.send_event = XBool(1)
+    event.xclient.display = d
+    event.xclient.window = win
+    event.xclient.message_type = stateAtom
+    event.xclient.format = 32
+    event.xclient.data.l[0] = if visible: 0 else: 1
+    event.xclient.data.l[1] = cast[clong](skipTaskbar)
+    event.xclient.data.l[2] = cast[clong](skipPager)
+    event.xclient.data.l[3] = 1
+    discard XSendEvent(
+      d,
+      rootWindow,
+      XBool(0),
+      SubstructureRedirectMask or SubstructureNotifyMask,
+      addr event
+    )
+  elif not visible:
+    var hints = [skipTaskbar, skipPager]
+    discard XChangeProperty(
+      d,
+      win,
+      stateAtom,
+      XA_ATOM,
+      32,
+      PropModeAppend,
+      cast[Pcuchar](addr hints[0]),
+      cint(hints.len)
+    )
+  discard XFlush(d)
 
 proc screenSize*(): tuple[width, height: int] =
   let

@@ -224,11 +224,12 @@ class _OverlayModule:
         fps: int = 0,
         title: str = "pymew",
         exit_key: Any = None,
-        track: bool = False,
+        track: bool = True,
         log_level: Any = None,
         imgui_bundle: bool = False,
         imgui_key: Any = None,
         msaa: bool = True,
+        taskbar: bool = False,
     ) -> Overlay: ...
 
 class _Draw:

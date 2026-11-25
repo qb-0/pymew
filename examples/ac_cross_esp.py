@@ -11,6 +11,8 @@ class Options:
     title = f"pymew cross platform esp"
     exit_key = "end"
     track = True
+    taskbar = False
+    msaa = True
 
     color_enemy = pm.color.get("orange")
     color_team = pm.color.get("cyan")
@@ -133,6 +135,8 @@ def main():
             title=Options.title,
             exit_key=Options.exit_key,
             track=Options.track,
+            taskbar=Options.taskbar,
+            msaa=Options.msaa,
         ) as ov:
             try:
                 font = d.load_font(Options.font_name, Options.font_size)
