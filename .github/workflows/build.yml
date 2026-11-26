@@ -35,6 +35,16 @@ jobs:
       - name: Install dependencies
         run: nimble install --depsOnly -y
 
+      # Temporary until https://github.com/yglukhov/nimpy/pull/314 is merged.
+      - name: Patch nimpy (PR 314, temporary)
+        shell: pwsh
+        run: |
+          $nimpy = (nimble path nimpy | Select-Object -Last 1).Trim()
+          git -C "$nimpy" apply --ignore-whitespace --verbose "$env:GITHUB_WORKSPACE/.github/patches/nimpy-314.patch"
+          if (-not (Select-String -Quiet -SimpleMatch -Path (Join-Path $nimpy "nimpy.nim") -Pattern "argsLen = newLit(numArgs - extraArg)")) {
+            throw "nimpy patch was not applied"
+          }
+
       - name: Build
         run: nimble build -y
 
@@ -69,10 +79,21 @@ jobs:
           tar -xJf /tmp/nim.tar.xz -C /opt
           echo "/opt/nim-2.4.0/bin" >> "$GITHUB_PATH"
 
-      - name: Build
+      - name: Install dependencies
         run: |
           source /opt/rh/gcc-toolset-16/enable
           nimble install --depsOnly -y
+
+      # Temporary until https://github.com/yglukhov/nimpy/pull/314 is merged.
+      - name: Patch nimpy (PR 314, temporary)
+        run: |
+          nimpy=$(nimble path nimpy | tail -n1)
+          git -C "$nimpy" apply --ignore-whitespace --verbose "$GITHUB_WORKSPACE/.github/patches/nimpy-314.patch"
+          grep -q "argsLen = newLit(numArgs - extraArg)" "$nimpy/nimpy.nim"
+
+      - name: Build
+        run: |
+          source /opt/rh/gcc-toolset-16/enable
           nimble build -y
 
       - name: Check glibc requirement
