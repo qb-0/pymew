@@ -1,4 +1,4 @@
-import std/[editdistance, math, strutils]
+import std/[dynlib, editdistance, math, strutils]
 import macros
 import nimpy
 import nimpy/[py_types, py_utils, py_lib as pyl]
@@ -203,13 +203,35 @@ proc objectNew*(cls: PyObject): PyObject =
   result = asPy(o)
   decRef o
 
-var methodClass: PyObject
+var
+  methodClass: PyObject
+  pyMethodNew: proc(fn, self: PPyObject): PPyObject {.cdecl.}
+
+proc methodGetImpl(self, args, kwargs: PPyObject): PPyObject {.cdecl.} =
+  if args.isNil or int(pyl.pyLib.PyTuple_Size(args)) < 2:
+    pyl.pyLib.PyErr_SetString(pyl.pyLib.PyExc_TypeError, "descriptor '__get__' needs an instance")
+    return nil
+  try:
+    let
+      descr = argAt(args, 0)
+      obj = argAt(args, 1)
+      fn = getAttr(descr, "fn")
+    if isNone(obj):
+      result = rawPy(fn)
+      incRef result
+    else:
+      result = pyMethodNew(rawPy(fn), rawPy(obj))
+  except CatchableError as e:
+    pyl.pyLib.PyErr_SetString(pyl.pyLib.PyExc_ValueError, cstring(e.msg))
+    result = nil
 
 proc makeMethod*(fn: PPyObject): PyObject =
   if methodClass.isNil:
+    pyMethodNew = cast[typeof(pyMethodNew)](pyl.pyLib.module.symAddr("PyMethod_New"))
+    if pyMethodNew.isNil:
+      raise newException(ValueError, "PyMethod_New not found")
     var d = pyDict()
-    d["__get__"] = (proc(descr, obj, objtype: PyObject): PyObject =
-      callObject(getAttr(pyImport("types"), "MethodType"), getAttr(descr, "fn"), obj))
+    d["__get__"] = rawKwFunc("__get__", methodGetImpl)
     methodClass = newClass("_Method", getAttr(pyBuiltinsModule(), "object"), d)
   result = callObject(methodClass)
   incRef fn
