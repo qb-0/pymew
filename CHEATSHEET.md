@@ -153,6 +153,8 @@ ov.monitor(index)                                                   # -> None
 ov.clickthrough(True)                                               # -> None
 ov.topmost(True)                                                    # -> None
 ov.interact(True)                                                   # -> None
+ov.active()                                                         # -> bool
+ov.hide(True)                                                       # -> None
 ov.fps()                                                            # -> int
 ov.set_fps(fps)                                                     # -> None
 ov.screenshot(path)                                                 # -> None
@@ -165,6 +167,8 @@ ov.close()                                                          # -> None
 # interact() enters the input mode that imgui_key also toggles
 # begin()/end() is only required for manual frame handling
 # track=True follows the target geometry and hides the overlay while the target is not focused
+# active() is True while the target window is focused (track=True only)
+# hide(False) clears the manual hide; track decides visibility again
 ```
 
 ## Draw

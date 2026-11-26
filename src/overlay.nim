@@ -28,6 +28,8 @@ type
     topmostOn*: bool
     taskbarOn*: bool
     hidden*: bool
+    manualHidden*: bool
+    active*: bool
     imgui*: ImGuiBridge
     imguiKey*: int
     interactOn*: bool
@@ -97,7 +99,7 @@ proc leaveInteract(self: Overlay) =
     focusWindow(self.targetId)
 
 proc applyFocus(self: Overlay, focused: bool) =
-  let visible = focused or self.interactOn
+  let visible = (focused or self.interactOn) and not self.manualHidden
   if visible == not self.hidden:
     return
   self.hidden = not visible
@@ -176,6 +178,7 @@ proc applyGeometry(self: Overlay, geometry: RawWindow) =
     self.lastY = geometry.y
 
 proc applyTarget(self: Overlay, window: RawWindow) =
+  self.active = self.trackTarget and window.focused
   self.applyFocus(window.focused)
   if not self.hidden:
     self.applyGeometry(window)
@@ -192,7 +195,7 @@ proc track(self: Overlay) =
     self.applyTarget(windowGeometry(self.targetId))
     return
   except OsFailure:
-    discard
+    self.active = false
   let now = getMonoTime()
   if (now - self.lastResolve).inMilliseconds < 1000:
     return
@@ -202,7 +205,7 @@ proc track(self: Overlay) =
     self.targetId = window.id
     self.applyTarget(window)
   except OsFailure:
-    discard
+    self.active = false
 
 proc overlayOpen*(
   target: PyObject = nil,
@@ -284,6 +287,7 @@ proc overlayOpen*(
       topmostOn: true,
       taskbarOn: taskbar,
       hidden: tracking and not targetWindow.focused,
+      active: tracking and targetWindow.focused,
       imguiKey: interactKey
     )
     try:
@@ -411,6 +415,23 @@ proc overlayInteract*(self: Overlay, enabled: bool): PPyObject {.exportpy: "inte
   pyWrap:
     self.checkOpen()
     if enabled: self.enterInteract() else: self.leaveInteract()
+    newPyNone()
+
+proc overlayActive*(self: Overlay): PPyObject {.exportpy: "active".} =
+  pyWrap:
+    self.checkOpen()
+    self.active
+
+proc overlayHide*(self: Overlay, enabled: bool = true): PPyObject {.exportpy: "hide".} =
+  pyWrap:
+    self.checkOpen()
+    self.manualHidden = enabled
+    if enabled:
+      self.applyFocus(false)
+    elif self.trackTarget:
+      self.track()
+    else:
+      self.applyFocus(true)
     newPyNone()
 
 proc overlayFps*(self: Overlay): PPyObject {.exportpy: "fps".} =
