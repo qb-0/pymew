@@ -237,23 +237,17 @@ proc makeMethod*(fn: PPyObject): PyObject =
   incRef fn
   setPyAttr(result, "fn", fn)
 
-var typeMethodClass: PyObject
-
-proc makeTypeMethod*(fn: PPyObject): PyObject =
-  if typeMethodClass.isNil:
-    var d = pyDict()
-    d["__get__"] = (proc(descr, obj, objtype: PyObject): PyObject =
-      callObject(getAttr(pyImport("types"), "MethodType"), getAttr(descr, "fn"), objtype))
-    typeMethodClass = newClass("_TypeMethod", getAttr(pyBuiltinsModule(), "object"), d)
-  result = callObject(typeMethodClass)
-  incRef fn
-  setPyAttr(result, "fn", fn)
-
 template bindMethod*(d: PyObject, name: string, fn: untyped) =
   d[name] = makeMethod(nimValueToPy(fn))
 
 template bindKwMethod*(d: PyObject, name: string, fn: PyCFunctionWithKeywords) =
   d[name] = makeMethod(rawPy(rawKwFunc(name, fn)))
+
+template bindClassMethod*(d: PyObject, name: string, fn: untyped) =
+  d[name] = callObject(getAttr(pyBuiltinsModule(), "classmethod"), nimValueToPy(fn))
+
+template bindKwClassMethod*(d: PyObject, name: string, fn: PyCFunctionWithKeywords) =
+  d[name] = callObject(getAttr(pyBuiltinsModule(), "classmethod"), rawKwFunc(name, fn))
 
 macro exportAs*(prc: typed, name: static[string]): untyped =
   var p = getImpl(prc)

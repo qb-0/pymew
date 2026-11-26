@@ -688,10 +688,10 @@ proc buildStructClass() =
   var d = pyDict()
   d["__new__"] = rawKwFunc("__new__", structNewImpl)
   d["__init__"] = rawKwFunc("__init__", initIgnore)
-  d["at"] = makeTypeMethod(nimValueToPy((proc(a, b: PyObject): PyObject = structAtImpl(a, b))))
+  bindClassMethod(d, "at", proc(a, b: PyObject): PyObject = structAtImpl(a, b))
   bindKwMethod(d, "address", structAddressImpl)
-  d["offset"] = makeTypeMethod(rawPy(rawKwFunc("offset", structOffsetImpl)))
-  d["size"] = makeTypeMethod(rawPy(rawKwFunc("size", structSizeImpl)))
+  bindKwClassMethod(d, "offset", structOffsetImpl)
+  bindKwClassMethod(d, "size", structSizeImpl)
   bindMethod(d, "__repr__", proc(a: PyObject): string = structReprImpl(a))
   structClass = newClass("Struct", getAttr(pyBuiltinsModule(), "object"), d)
 
