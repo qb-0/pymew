@@ -84,6 +84,7 @@ proc enterInteract(self: Overlay) =
       clipCursor(handle)
   if not self.imgui.isNil:
     setMouseDrawCursor(self.imgui, true)
+    hideCursor()
 
 proc leaveInteract(self: Overlay) =
   if not self.interactOn:
@@ -92,6 +93,7 @@ proc leaveInteract(self: Overlay) =
   if not self.imgui.isNil:
     releaseInput(self.imgui)
     setMouseDrawCursor(self.imgui, false)
+    showCursor()
   releaseCursorClip()
   if isWindowReady():
     self.applyWindowFlag(true, WindowMousePassthrough, self.clickthroughOn)
