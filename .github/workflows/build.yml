@@ -49,7 +49,9 @@ jobs:
         run: nimble build -y
 
       - name: Smoke test
-        run: python -c "import pymew as pm; print(len(pm.mem.processes()))"
+        run: |
+          python -c "import pymew as pm; print(len(pm.mem.processes()))"
+          python -c "import os, pymew as pm; p = pm.mem.open(os.getpid()); p.set_debug(flag=False); p.close(); print('kwargs ok')"
 
       - uses: actions/upload-artifact@v7
         with:
@@ -110,6 +112,7 @@ jobs:
           cp pymew.so pymew.pyi /tmp/
           cd /tmp
           /opt/python/cp39-cp39/bin/python -c "import pymew as pm; print(len(pm.mem.processes()))"
+          /opt/python/cp39-cp39/bin/python -c "import os, pymew as pm; p = pm.mem.open(os.getpid()); p.set_debug(flag=False); p.close(); print('kwargs ok')"
 
       - uses: actions/upload-artifact@v7
         with:
@@ -246,6 +249,7 @@ jobs:
             exit 1
           fi
           /tmp/venv/bin/python -X faulthandler -c "import pymew as pm; print(len(pm.mem.processes()))"
+          /tmp/venv/bin/python -X faulthandler -c "import os, pymew as pm; p = pm.mem.open(os.getpid()); p.set_debug(flag=False); p.close(); print('kwargs ok')"
 
       - uses: actions/upload-artifact@v7
         with:
