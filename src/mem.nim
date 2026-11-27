@@ -168,50 +168,84 @@ proc typeAtImpl(self, offset: PyObject): PyObject =
 proc structAtImpl(cls, offset: PyObject): PyObject =
   makeField(cls, offset)
 
+proc hasOwnAttr(cls: PyObject, name: string): bool =
+  let
+    key = nimValueToPy(name)
+    value = pyl.pyLib.PyObject_GetItem(rawPy(getAttr(cls, "__dict__")), key)
+  decRef key
+  if value.isNil:
+    pyl.pyLib.PyErr_Clear()
+    return false
+  decRef value
+  true
+
 proc ensureStructInfo*(cls: PyObject) =
-  if codeOf(cls) == ord(tcStruct) and hasAttr(cls, "_size"):
+  let target = if pyIsType(cls): cls else: getAttr(cls, "__class__")
+  if codeOf(target) == ord(tcStruct) and hasOwnAttr(target, "_size"):
     return
-  let classDict = getAttr(cls, "__dict__")
-  var fields: seq[PyObject]
-  var maxEnd = 0
-  var maxEnd32 = 0
-  var hasPtr = false
-  for rawKey in rawItems(rawPy(classDict)):
+  var fields: seq[tuple[name: string, entry: PyObject, endOff, end32: int, hasPtr: bool]]
+  let mro = getAttr(target, "__mro__")
+  for i in countdown(int(pyl.pyLib.PyTuple_Size(rawPy(mro))) - 1, 0):
     let
-      key = asPy(rawKey).to(string)
-      v = tryGetAttr(cls, key)
-    if v.isNil or not isFieldMarker(v):
-      continue
-    let
-      ftype = getAttr(v, "ftype")
-      rawOff = getAttr(v, "offset")
-    if not pyIsInstance(rawOff, "int") or pyIsInstance(rawOff, "bool"):
-      raise newException(PmBadType, "field '" & key & "' offset must be an int")
-    let off = rawOff.to(int)
-    if off < 0:
-      raise newException(PmValueError, "field '" & key & "' offset must not be negative")
-    let
-      fsz = sizeOfDesc(ftype)
-      fptr = usesPointers(ftype)
-      fsz32 = sizeForRead(ftype, 4)
-      entry = newPyTuple([
-        takePy(nimValueToPy(key)),
-        ftype,
-        takePy(nimValueToPy(off)),
-        takePy(nimValueToPy(off + fsz)),
-        takePy(nimValueToPy(codeOf(ftype)))
-      ])
-    fields.add entry
-    maxEnd = max(maxEnd, off + fsz)
-    maxEnd32 = max(maxEnd32, off + fsz32)
-    hasPtr = hasPtr or fptr
+      base = asPy(pyl.pyLib.PyTuple_GetItem(rawPy(mro), i))
+      classDict = getAttr(base, "__dict__")
+    for rawKey in rawItems(rawPy(classDict)):
+      defer: decRef rawKey
+      let key = asPy(rawKey).to(string)
+      let
+        rawValue = pyl.pyLib.PyObject_GetItem(rawPy(classDict), rawKey)
+      if rawValue.isNil:
+        pyl.pyLib.PyErr_Clear()
+        continue
+      let value = asPy(rawValue)
+      decRef rawValue
+      if not isFieldMarker(value):
+        continue
+      let
+        ftype = getAttr(value, "ftype")
+        rawOff = getAttr(value, "offset")
+      if not pyIsInstance(rawOff, "int") or pyIsInstance(rawOff, "bool"):
+        raise newException(PmBadType, "field '" & key & "' offset must be an int")
+      let off = rawOff.to(int)
+      if off < 0:
+        raise newException(PmValueError, "field '" & key & "' offset must not be negative")
+      let
+        fsz = sizeOfDesc(ftype)
+        fptr = usesPointers(ftype)
+        fsz32 = sizeForRead(ftype, 4)
+        entry = newPyTuple([
+          takePy(nimValueToPy(key)),
+          ftype,
+          takePy(nimValueToPy(off)),
+          takePy(nimValueToPy(off + fsz)),
+          takePy(nimValueToPy(codeOf(ftype)))
+        ])
+        info = (name: key, entry: entry, endOff: off + fsz, end32: off + fsz32, hasPtr: fptr)
+      var replaced = false
+      for i in 0 ..< fields.len:
+        if fields[i].name == key:
+          fields[i] = info
+          replaced = true
+          break
+      if not replaced:
+        fields.add info
   if fields.len == 0:
-    raise newException(PmBadType, structName(cls) & " has no fields; declare them with pm.mem.i32.at(offset)")
-  setPyAttrInt(cls, "_code", ord(tcStruct))
-  setPyAttrInt(cls, "_size", maxEnd)
-  setPyAttrInt(cls, "_size32", maxEnd32)
-  setPyAttr(cls, "_has_ptr", nimValueToPy(hasPtr))
-  setAttr(cls, "_fields", newPyListOf(fields))
+    raise newException(PmBadType, structName(target) & " has no fields; declare them with pm.mem.i32.at(offset)")
+  var
+    entries: seq[PyObject]
+    maxEnd = 0
+    maxEnd32 = 0
+    hasPtr = false
+  for f in fields:
+    entries.add f.entry
+    maxEnd = max(maxEnd, f.endOff)
+    maxEnd32 = max(maxEnd32, f.end32)
+    hasPtr = hasPtr or f.hasPtr
+  setPyAttrInt(target, "_code", ord(tcStruct))
+  setPyAttrInt(target, "_size", maxEnd)
+  setPyAttrInt(target, "_size32", maxEnd32)
+  setPyAttr(target, "_has_ptr", nimValueToPy(hasPtr))
+  setAttr(target, "_fields", newPyListOf(entries))
 
 proc isStructClass(o: PyObject): bool =
   if not pyIsType(o):
@@ -300,9 +334,6 @@ proc usesPointers(o: PyObject): bool =
       return cached.to(bool)
     return usesPointers(getAttr(o, "_elem"))
   if code < 0 or code == ord(tcStruct):
-    let cached = tryGetAttr(o, "_has_ptr")
-    if not cached.isNil:
-      return cached.to(bool)
     ensureStructInfo(o)
     let known = tryGetAttr(o, "_has_ptr")
     if not known.isNil:
