@@ -54,10 +54,12 @@ nim c pymew
 ## Projects
 <div align="center"><sub>Want your project listed here? Open a pull request or post it on pymew's discord server.</sub></div><br>
 
-<div align="center"><a href="https://github.com/qb-0/pymew-DS3-ESP"><strong>pymew-DS3-ESP</strong></a><br><sub>Nov 24, 2026 · <a href="https://github.com/qb-0">qb-0</a></sub><br><a href="https://github.com/qb-0/pymew-DS3-ESP"><img src="https://raw.githubusercontent.com/qb-0/pymew-DS3-ESP/master/assets/ds3.png" width="340" alt="Darksiders III ESP"></a><br>A configurable, cross-platform Darksiders III ESP.</div><br>
+<div align="center"><a href="https://github.com/qb-0/pymew-SWBF2-ESP"><strong>pymew-SWBF2-ESP</strong></a><br><sub>Nov, 2026 · <a href="https://github.com/qb-0">qb-0</a></sub><br><a href="https://github.com/qb-0/pymew-SWBF2-ESP"><img src="https://raw.githubusercontent.com/qb-0/pymew-SWBF2-ESP/master/assets/swbf2.png" width="340" alt="Star Wars Battlefront II ESP"></a><br>A configurable Star Wars Battlefront II ESP and aimbot.</div><br>
+
+<div align="center"><a href="https://github.com/qb-0/pymew-DS3-ESP"><strong>pymew-DS3-ESP</strong></a><br><sub>Nov, 2026 · <a href="https://github.com/qb-0">qb-0</a></sub><br><a href="https://github.com/qb-0/pymew-DS3-ESP"><img src="https://raw.githubusercontent.com/qb-0/pymew-DS3-ESP/master/assets/ds3.png" width="340" alt="Darksiders III ESP"></a><br>A configurable, cross-platform Darksiders III ESP.</div><br>
 
 <!--
 Copy this block to add a project:
 
-<div align="center"><a href="LINK"><strong>NAME</strong></a><br><sub>Mon DD, YYYY · <a href="https://github.com/AUTHOR">AUTHOR</a></sub><br><a href="LINK"><img src="SCREENSHOT" width="340" alt="NAME"></a><br>ONE LINE DESCRIPTION</div><br>
+<div align="center"><a href="LINK"><strong>NAME</strong></a><br><sub>Mon, YYYY · <a href="https://github.com/AUTHOR">AUTHOR</a></sub><br><a href="LINK"><img src="SCREENSHOT" width="340" alt="NAME"></a><br>ONE LINE DESCRIPTION</div><br>
 -->
