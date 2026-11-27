@@ -2,7 +2,6 @@ import std/[algorithm, math, os, sets, strutils, tables, unicode]
 import nimpy
 import nimpy/[py_types, py_utils, py_lib as pyl]
 import raylib as rl
-from rlgl import drawRenderBatchActive
 
 import pyutil, errors, vec
 import platform/api
@@ -2238,11 +2237,22 @@ proc captureScreen*(path, op: string) =
       PmOverlayError,
       "screenshot must be called while a frame is open (between loop() and end())"
     )
-  drawRenderBatchActive()
   let
+    position = getWindowPosition()
+    region = captureScreenRegion(
+      position.x.int,
+      position.y.int,
+      getScreenWidth().int,
+      getScreenHeight().int
+    )
     target = absolutePath(path)
-    image = rl.loadImageFromScreen()
-    saved = rl.exportImage(image, target)
+  let image = rl.toWeakImage(
+    region.data,
+    region.width.int32,
+    region.height.int32,
+    rl.PixelFormat.UncompressedR8g8b8a8
+  )
+  let saved = rl.exportImage(rl.Image(image), target)
   if not saved:
     raise newException(PmOverlayError, "cannot save screenshot to '" & path & "'")
 

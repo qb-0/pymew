@@ -280,6 +280,49 @@ proc screenSize*(): tuple[width, height: int] =
     GetSystemMetrics(SM_CYVIRTUALSCREEN).int
   )
 
+proc captureScreenRegion*(x, y, width, height: int): RawImage =
+  if width <= 0 or height <= 0:
+    raise newException(OsFailure, "invalid screen region")
+  let screen = GetDC(0)
+  if screen == 0:
+    raise osFailure("get screen device context")
+  defer: discard ReleaseDC(0, screen)
+  let memory = CreateCompatibleDC(screen)
+  if memory == 0:
+    raise osFailure("create screen device context")
+  defer: discard DeleteDC(memory)
+  var info: BITMAPINFO
+  info.bmiHeader.biSize = DWORD(sizeof(BITMAPINFOHEADER))
+  info.bmiHeader.biWidth = width.int32
+  info.bmiHeader.biHeight = -height.int32
+  info.bmiHeader.biPlanes = 1
+  info.bmiHeader.biBitCount = 32
+  info.bmiHeader.biCompression = DWORD(BI_RGB)
+  var bits: pointer
+  let bitmap = CreateDIBSection(screen, addr info, UINT(DIB_RGB_COLORS), addr bits, 0, 0)
+  if bitmap == 0 or bits.isNil:
+    raise osFailure("create screen bitmap")
+  defer: discard DeleteObject(bitmap)
+  let previous = SelectObject(memory, bitmap)
+  defer: discard SelectObject(memory, previous)
+  if BitBlt(
+    memory,
+    0,
+    0,
+    width.int32,
+    height.int32,
+    screen,
+    x.int32,
+    y.int32,
+    SRCCOPY or CAPTUREBLT
+  ) == 0:
+    raise osFailure("capture screen region")
+  result = RawImage(width: width, height: height, data: newSeq[uint8](width * height * 4))
+  copyMem(addr result.data[0], bits, result.data.len)
+  for i in countup(0, result.data.len - 1, 4):
+    swap(result.data[i], result.data[i + 2])
+    result.data[i + 3] = 255
+
 proc collectMonitor(
   monitor: HMONITOR,
   hdc: HDC,

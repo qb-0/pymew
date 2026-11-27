@@ -40,6 +40,11 @@ type
     height*: int
     refresh*: int
 
+  RawImage* = object
+    width*: int
+    height*: int
+    data*: seq[uint8]
+
   OsFailure* = object of CatchableError
     code*: int
     denied*: bool

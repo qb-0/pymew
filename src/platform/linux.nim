@@ -590,6 +590,43 @@ proc screenSize*(): tuple[width, height: int] =
     screen = XDefaultScreen(d)
   (XDisplayWidth(d, screen).int, XDisplayHeight(d, screen).int)
 
+proc captureScreenRegion*(x, y, width, height: int): RawImage =
+  if width <= 0 or height <= 0:
+    raise newException(OsFailure, "invalid screen region")
+  let
+    d = openDisplay()
+    screen = XDefaultScreen(d)
+    left = max(x, 0)
+    top = max(y, 0)
+    right = min(x + width, XDisplayWidth(d, screen).int)
+    bottom = min(y + height, XDisplayHeight(d, screen).int)
+  result = RawImage(width: width, height: height, data: newSeq[uint8](width * height * 4))
+  for i in countup(3, result.data.len - 1, 4):
+    result.data[i] = 255
+  if left >= right or top >= bottom:
+    return
+  let image = XGetImage(
+    d,
+    rootWindow,
+    left.cint,
+    top.cint,
+    (right - left).cuint,
+    (bottom - top).cuint,
+    AllPlanes,
+    ZPixmap
+  )
+  if image.isNil:
+    raise newException(OsFailure, "cannot capture screen region")
+  defer: discard image.f.destroy_image(image)
+  for row in 0 ..< bottom - top:
+    for col in 0 ..< right - left:
+      let
+        pixel = image.f.get_pixel(image, col.cint, row.cint)
+        index = ((top - y + row) * width + left - x + col) * 4
+      result.data[index] = ((pixel and image.red_mask) shr 16).uint8
+      result.data[index + 1] = ((pixel and image.green_mask) shr 8).uint8
+      result.data[index + 2] = (pixel and image.blue_mask).uint8
+
 proc monitorList*(): seq[RawMonitor] =
   let
     d = openDisplay()
